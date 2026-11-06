@@ -1,0 +1,44 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes: [ollama:/root/.ollama]
+    ports: ["11434:11434"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      retries: 30
+    # Décommentez pour utiliser un GPU NVIDIA
+    # deploy: {resources: {reservations: {devices: [{driver: nvidia, count: all, capabilities: [gpu]}]}}}
+
+  # Télécharge les modèles puis construit l'index (une seule fois)
+  init:
+    build: .
+    depends_on: {ollama: {condition: service_healthy}}
+    environment: &env
+      OLLAMA_BASE_URL: http://ollama:11434
+      SANAD_LLM: ${SANAD_LLM:-qwen2.5:7b}
+      SANAD_EMBED: ${SANAD_EMBED:-bge-m3}
+    volumes: [index:/app/index]
+    command: >
+      sh -c "curl -s http://ollama:11434/api/pull -d '{\"name\":\"'$$SANAD_LLM'\"}' &&
+             curl -s http://ollama:11434/api/pull -d '{\"name\":\"'$$SANAD_EMBED'\"}' &&
+             python -m sanad.ingest"
+
+  api:
+    build: .
+    depends_on: {init: {condition: service_completed_successfully}}
+    environment: *env
+    volumes: [index:/app/index]
+    ports: ["8000:8000"]
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+  ui:
+    build: .
+    depends_on: {init: {condition: service_completed_successfully}}
+    environment: *env
+    volumes: [index:/app/index]
+    ports: ["8501:8501"]
+
+volumes:
+  ollama:
+  index:
