@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+index/
+eval/results/
+.pytest_cache/
+*.pdf
+!data/docs/*.pdf
